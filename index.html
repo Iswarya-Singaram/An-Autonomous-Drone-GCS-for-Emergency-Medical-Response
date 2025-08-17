@@ -1,0 +1,288 @@
+<!-- 
+    File: index.html (Updated with Safety Features, Mission Preview, and Video)
+    Location: Save this in your project folder on the Raspberry Pi
+    Description: The complete GCS frontend with all requested features.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drone GCS</title>
+    
+    <!-- LeafletJS for the map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+     crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+     crossorigin=""></script>
+
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- Custom Stylesheet -->
+    <style>
+        :root {
+            --bg-color: #1a1a1d;
+            --primary-color: #2c3e50;
+            --secondary-color: #465869;
+            --accent-color: #00aaff;
+            --text-color: #e0e0e0;
+            --success-color: #2ecc71;
+            --error-color: #e74c3c;
+            --warn-color: #f39c12;
+            --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            font-family: var(--font-family); background-color: var(--bg-color);
+            color: var(--text-color); overflow: hidden;
+        }
+
+        .container { display: flex; width: 100%; height: 100%; }
+
+        .left-panel {
+            width: 450px; background-color: var(--primary-color); padding: 20px;
+            box-sizing: border-box; display: flex; flex-direction: column;
+            overflow-y: auto; border-right: 2px solid var(--secondary-color);
+            flex-shrink: 0;
+        }
+
+        .left-panel h2 {
+            text-align: center; margin-top: 0; border-bottom: 1px solid var(--accent-color);
+            padding-bottom: 10px; color: var(--accent-color);
+        }
+        
+        .telemetry-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+        .telemetry-item { background-color: var(--secondary-color); padding: 15px; border-radius: 8px; text-align: center; }
+        .telemetry-item .label { font-size: 0.9em; color: #bdc3c7; display: block; margin-bottom: 5px; }
+        .telemetry-item .value { font-size: 1.5em; font-weight: bold; }
+        .telemetry-item .unit { font-size: 0.8em; margin-left: 4px; }
+
+        .status-display { background-color: var(--secondary-color); padding: 15px; border-radius: 8px; margin-top: 15px; text-align: center; }
+        .status-display .label { font-size: 1em; font-weight: bold; }
+        #droneMode { font-size: 1.5em; font-weight: bold; color: var(--success-color); margin-top: 5px; }
+
+        /* NEW: Safety Actions Section */
+        .actions-panel { margin-top: 20px; border-top: 2px solid var(--secondary-color); padding-top: 10px; }
+        .action-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .action-buttons button {
+            padding: 10px; border: none; color: white; border-radius: 5px; cursor: pointer; font-size: 1em;
+        }
+        #btnArm { background-color: var(--success-color); }
+        #btnDisarm { background-color: var(--error-color); }
+        #btnRTL { background-color: var(--warn-color); grid-column: 1 / -1; } /* Spans both columns */
+
+        .mission-planner {
+            margin-top: 20px; border-top: 2px solid var(--secondary-color); padding-top: 10px;
+            display: flex; flex-direction: column; flex-grow: 1;
+        }
+        .mission-controls { display: flex; gap: 10px; margin-bottom: 15px; }
+        .mission-controls button {
+            flex-grow: 1; padding: 8px; background-color: var(--accent-color);
+            border: none; color: white; border-radius: 5px; cursor: pointer;
+        }
+        .mission-plan-table-container { flex-grow: 1; overflow-y: auto; }
+        .mission-plan-table { width: 100%; border-collapse: collapse; }
+        .mission-plan-table th, .mission-plan-table td { padding: 8px; text-align: left; border-bottom: 1px solid var(--secondary-color); font-size: 0.9em; }
+        .mission-plan-table th { background-color: var(--secondary-color); position: sticky; top: 0; }
+        .mission-plan-table input { width: 60px; background-color: #34495e; border: 1px solid var(--accent-color); color: white; border-radius: 4px; padding: 4px; }
+        .mission-plan-table .delete-btn { color: var(--error-color); cursor: pointer; background: none; border: none; font-size: 1.1em; }
+
+        .main-panel { flex-grow: 1; display: flex; flex-direction: column; position: relative; }
+        #map { width: 100%; flex-grow: 1; }
+        .leaflet-container { background: #333; }
+
+        .video-pip {
+            position: absolute; bottom: 20px; right: 20px; width: 320px; height: 240px;
+            border: 3px solid var(--accent-color); border-radius: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            background-color: #000; z-index: 1000; display: flex; flex-direction: column;
+            overflow: hidden; transition: width 0.3s ease, height 0.3s ease;
+        }
+        .video-pip-header {
+            background-color: var(--accent-color); color: white; padding: 5px 10px; cursor: move;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .video-pip-controls button { background: none; border: none; color: white; cursor: pointer; }
+        #videoStream { width: 100%; height: 100%; object-fit: cover; }
+        .video-pip.minimized { height: 34px; width: 150px; }
+        .video-pip.minimized #videoStream { display: none; }
+
+        .bottom-controls {
+            background-color: var(--primary-color); padding: 15px; display: flex;
+            justify-content: center; align-items: center; gap: 10px;
+            border-top: 2px solid var(--secondary-color);
+        }
+        .bottom-controls button {
+            padding: 12px 20px; font-size: 1em; font-weight: bold;
+            border: none; border-radius: 8px; cursor: pointer; color: white;
+        }
+        #btnPreviewPath { background-color: var(--warn-color); }
+        #btnUpload { background-color: var(--accent-color); }
+        #btnExecute { background-color: var(--success-color); }
+        #btnExecute:disabled, #btnUpload:disabled { background-color: #555; cursor: not-allowed; }
+
+        #messageBox {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background-color: var(--accent-color); color: white; padding: 15px 30px;
+            border-radius: 8px; z-index: 1001; opacity: 0; visibility: hidden;
+            transition: opacity 0.5s, visibility 0.5s;
+        }
+        #messageBox.show { opacity: 1; visibility: visible; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- Left panel -->
+        <div class="left-panel">
+            <h2><i class="fa-solid fa-bars"></i> Controls</h2>
+            <div class="status-display"><div class="label">Connection</div><div id="connectionStatus" class="status-disconnected">DISCONNECTED</div></div>
+            <div class="status-display"><div class="label">Flight Mode</div><div id="droneMode">UNKNOWN</div></div>
+            <div class="telemetry-grid">
+                <div class="telemetry-item"><span class="label">Altitude</span><span class="value" id="altitude">0.00</span><span class="unit">m</span></div>
+                <div class="telemetry-item"><span class="label">Groundspeed</span><span class="value" id="groundspeed">0.00</span><span class="unit">m/s</span></div>
+                <div class="telemetry-item"><span class="label">Yaw</span><span class="value" id="yaw">0</span><span class="unit">°</span></div>
+                <div class="telemetry-item"><span class="label">Battery</span><span class="value" id="battery">0.00</span><span class="unit">V</span></div>
+            </div>
+            <div class="status-display" style="margin-top: 15px;"><div class="label">GPS Info</div><div id="gpsStatus" style="font-size: 0.9em;">Lat: <span id="lat">N/A</span> | Lon: <span id="lon">N/A</span> | Sats: <span id="sats">0</span></div></div>
+
+            <!-- Safety Actions Panel -->
+            <div class="actions-panel">
+                <h2><i class="fa-solid fa-shield-halved"></i> Actions</h2>
+                <div class="action-buttons">
+                    <button id="btnArm"><i class="fa-solid fa-lock-open"></i> Arm</button>
+                    <button id="btnDisarm"><i class="fa-solid fa-lock"></i> Disarm</button>
+                    <button id="btnRTL"><i class="fa-solid fa-house"></i> Return to Launch</button>
+                </div>
+            </div>
+
+            <!-- Mission Planner UI -->
+            <div class="mission-planner">
+                <h2><i class="fa-solid fa-list-check"></i> Mission Plan</h2>
+                <div class="mission-controls"><button id="addTakeoff">Add Takeoff</button><button id="addLand">Add Land</button><button id="clearMission">Clear All</button></div>
+                <div class="mission-plan-table-container"><table class="mission-plan-table"><thead><tr><th>#</th><th>Command</th><th>Alt (m)</th><th>Del</th></tr></thead><tbody id="mission-plan-body"></tbody></table></div>
+            </div>
+        </div>
+
+        <!-- Right panel -->
+        <div class="main-panel">
+            <div id="map"></div>
+            <div class="video-pip" id="videoPip"><div class="video-pip-header" id="videoPipHeader"><span>Live Feed</span><div class="video-pip-controls"><button id="toggleVideo"><i class="fa-solid fa-window-minimize"></i></button></div></div><img id="videoStream" src="" alt="Live Video Feed"></div>
+            <div class="bottom-controls">
+                <button id="btnPreviewPath"><i class="fa-solid fa-road"></i> Preview Path</button>
+                <button id="btnUpload" disabled><i class="fa-solid fa-upload"></i> Upload Mission</button>
+                <button id="btnExecute" disabled><i class="fa-solid fa-paper-plane"></i> Execute Mission</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="messageBox"></div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- CONFIGURATION ---
+            let RASPBERRY_PI_IP = window.location.hostname || 'localhost';
+            const WEBSOCKET_URL = `ws://${RASPBERRY_PI_IP}:8000/ws`;
+            const VIDEO_STREAM_URL = `http://${RASPBERRY_PI_IP}:8001/`;
+
+            // --- UI ELEMENTS ---
+            const videoPip = document.getElementById('videoPip'), videoPipHeader = document.getElementById('videoPipHeader'), toggleVideoButton = document.getElementById('toggleVideo'), videoStreamEl = document.getElementById('videoStream');
+            const connectionStatusEl = document.getElementById('connectionStatus'), droneModeEl = document.getElementById('droneMode'), altitudeEl = document.getElementById('altitude'), groundspeedEl = document.getElementById('groundspeed'), yawEl = document.getElementById('yaw'), batteryEl = document.getElementById('battery'), latEl = document.getElementById('lat'), lonEl = document.getElementById('lon'), satsEl = document.getElementById('sats'), messageBox = document.getElementById('messageBox');
+            const addTakeoffBtn = document.getElementById('addTakeoff'), addLandBtn = document.getElementById('addLand'), clearMissionBtn = document.getElementById('clearMission'), missionPlanBody = document.getElementById('mission-plan-body');
+            const btnPreviewPath = document.getElementById('btnPreviewPath'), btnUpload = document.getElementById('btnUpload'), btnExecute = document.getElementById('btnExecute');
+            const btnArm = document.getElementById('btnArm'), btnDisarm = document.getElementById('btnDisarm'), btnRTL = document.getElementById('btnRTL');
+
+            // --- STATE VARIABLES ---
+            let ws, dronePosition = null, missionPlan = [], missionWaypoints = [], isMissionUploaded = false;
+            let missionPathPolyline = L.polyline([], { color: '#00aaff', weight: 5 });
+
+            // --- VIDEO WINDOW LOGIC ---
+            videoStreamEl.src = VIDEO_STREAM_URL;
+            let isDragging = false, offsetX, offsetY;
+            videoPipHeader.onmousedown = e => { isDragging = true; offsetX = e.clientX - videoPip.offsetLeft; offsetY = e.clientY - videoPip.offsetTop; };
+            document.onmousemove = e => { if (isDragging) { videoPip.style.left = `${e.clientX - offsetX}px`; videoPip.style.top = `${e.clientY - offsetY}px`; } };
+            document.onmouseup = () => isDragging = false;
+            toggleVideoButton.onclick = e => { e.stopPropagation(); videoPip.classList.toggle('minimized'); toggleVideoButton.querySelector('i').className = videoPip.classList.contains('minimized') ? 'fa-solid fa-window-maximize' : 'fa-solid fa-window-minimize'; };
+
+            // --- MAP INITIALIZATION ---
+            const map = L.map('map').setView([15.8281, 78.0373], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            const droneMarker = L.marker([0, 0], { icon: L.divIcon({ html: '<i class="fa-solid fa-crosshairs fa-2x" style="color: #00aaff;"></i>', className: 'drone-icon', iconSize: [30, 30], iconAnchor: [15, 15] }) }).addTo(map);
+
+            // --- MISSION PLANNING FUNCTIONS ---
+            function renderMissionPlan() {
+                missionPlanBody.innerHTML = '';
+                missionWaypoints.forEach(marker => map.removeLayer(marker));
+                missionWaypoints = [];
+                missionPlan.forEach((item, index) => {
+                    const row = missionPlanBody.insertRow();
+                    row.innerHTML = `<td>${index + 1}</td><td>${item.command}</td><td><input type="number" class="alt-input" value="${item.alt}" ${item.command === 'LAND' ? 'disabled' : ''}></td><td><button class="delete-btn" data-index="${index}"><i class="fa-solid fa-trash"></i></button></td>`;
+                    if (item.command === 'WAYPOINT') {
+                        const marker = L.marker([item.lat, item.lon]).addTo(map).bindPopup(`Waypoint ${index + 1}`);
+                        missionWaypoints.push(marker);
+                    }
+                });
+                document.querySelectorAll('.alt-input').forEach((input, index) => { input.onchange = e => missionPlan[index].alt = parseFloat(e.target.value); });
+                document.querySelectorAll('.delete-btn').forEach(btn => { btn.onclick = e => deleteMissionItem(parseInt(e.currentTarget.dataset.index)); });
+            }
+            function addMissionItem(item) { missionPlan.push(item); renderMissionPlan(); isMissionUploaded = false; btnExecute.disabled = true; btnUpload.disabled = true; }
+            function deleteMissionItem(index) { missionPlan.splice(index, 1); renderMissionPlan(); isMissionUploaded = false; btnExecute.disabled = true; btnUpload.disabled = true; }
+            addTakeoffBtn.onclick = () => addMissionItem({ command: 'TAKEOFF', alt: 10, lat: 0, lon: 0 });
+            addLandBtn.onclick = () => addMissionItem({ command: 'LAND', alt: 0, lon: 0 });
+            clearMissionBtn.onclick = () => { missionPlan = []; renderMissionPlan(); isMissionUploaded = false; btnExecute.disabled = true; btnUpload.disabled = true; missionPathPolyline.remove(); };
+            map.on('click', e => addMissionItem({ command: 'WAYPOINT', alt: 15, lat: e.latlng.lat, lon: e.latlng.lng }));
+
+            // --- WEBSOCKET AND COMMAND FUNCTIONS ---
+            function showMessage(text, duration = 3000) { messageBox.textContent = text; messageBox.classList.add('show'); setTimeout(() => messageBox.classList.remove('show'), duration); }
+            function updateTelemetry(data) {
+                if (!data) return;
+                droneModeEl.textContent = data.mode || 'UNKNOWN';
+                altitudeEl.textContent = (data.alt || 0).toFixed(2);
+                groundspeedEl.textContent = (data.groundspeed || 0).toFixed(2);
+                yawEl.textContent = (data.heading || 0).toFixed(0);
+                batteryEl.textContent = (data.battery / 1000).toFixed(2);
+                satsEl.textContent = data.sats || 0;
+                if (data.lat && data.lon) { dronePosition = { lat: data.lat, lon: data.lon }; droneMarker.setLatLng([data.lat, data.lon]); if (map.getZoom() < 15) map.setView([data.lat, data.lon], 17); }
+            }
+            function connectWebSocket() {
+                ws = new WebSocket(WEBSOCKET_URL);
+                ws.onopen = () => { connectionStatusEl.textContent = 'CONNECTED'; connectionStatusEl.className = 'status-connected'; };
+                ws.onmessage = event => {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'telemetry') updateTelemetry(data.payload);
+                    else if (data.type === 'mission_path_preview') {
+                        missionPathPolyline.setLatLngs(data.payload.full_path).addTo(map);
+                        btnUpload.disabled = false;
+                        showMessage('Path preview generated.');
+                    } else if (data.type === 'mission_uploaded') {
+                        isMissionUploaded = true;
+                        btnExecute.disabled = false;
+                        showMessage('Mission uploaded successfully.');
+                    } else if (data.type === 'status') showMessage(data.message);
+                };
+                ws.onclose = () => { connectionStatusEl.textContent = 'DISCONNECTED'; connectionStatusEl.className = 'status-disconnected'; btnExecute.disabled = true; btnUpload.disabled = true; setTimeout(connectWebSocket, 3000); };
+                ws.onerror = error => console.error('WebSocket error:', error);
+            }
+            function sendCommand(command) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(command)); else showMessage('Not connected to backend.'); }
+
+            // --- EVENT LISTENERS ---
+            btnArm.onclick = () => sendCommand({ type: 'arm' });
+            btnDisarm.onclick = () => sendCommand({ type: 'disarm' });
+            btnRTL.onclick = () => sendCommand({ type: 'rtl' });
+            btnPreviewPath.onclick = () => {
+                if (missionPlan.length === 0 || !dronePosition) { showMessage('Create a plan and wait for GPS lock to preview.'); return; }
+                showMessage('Generating path preview...');
+                missionPathPolyline.remove();
+                sendCommand({ type: 'preview_path', payload: { plan: missionPlan, start_location: dronePosition } });
+            };
+            btnUpload.onclick = () => { showMessage('Uploading mission...'); sendCommand({ type: 'upload_mission' }); };
+            btnExecute.onclick = () => { if (isMissionUploaded) { showMessage('Executing mission!'); sendCommand({ type: 'execute_mission' }); } else { showMessage('Upload mission first.'); } };
+            
+            connectWebSocket();
+        });
+    </script>
+</body>
+</html>
