@@ -1,1 +1,1 @@
-# my_gcs
+# An Autonomous Drone GCS for Emergency Medical Response
